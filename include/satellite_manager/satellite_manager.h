@@ -22,9 +22,9 @@ public:
   void addObservation(const obsd_t& obs);
 
   void getSatState(int sat_id, const gtime_t& t, Vector3d& posECEF, Vector3d& velECEF);
+  void update();
 
 private:
-  void update();
   std::vector<obsd_t> obs_;
   nav_t nav_;
   std::vector<double> rs_;
