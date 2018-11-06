@@ -1,8 +1,64 @@
 #include "satellite_manager/satellite_manager.h"
 
+extern "C" {
+#include "rtklib.h"
+}
+
 SatelliteManager::SatelliteManager()
 {
+    nav_.eph = new eph_t[GPS_EPHEMERIS_ARRAY_SIZE];
+    nav_.nmax = nav_.n = GPS_EPHEMERIS_ARRAY_SIZE;
+    for (int i = 0; i < nav_.nmax; i++)
+    {
+        memset(&nav_.eph[i], 0, sizeof(eph_t));
+        nav_.eph[i].iode = -1;
+        nav_.eph[i].iodc = -1;
+    }
 
+    nav_.geph = new geph_t[GLONASS_EPHEMERIS_ARRAY_SIZE];
+    nav_.ngmax = nav_.ng = GLONASS_EPHEMERIS_ARRAY_SIZE;
+    for (int i = 0; i < nav_.ngmax; i++)
+    {
+        memset(&nav_.geph[i], 0, sizeof(geph_t));
+        nav_.geph[i].iode = -1;
+    }
+
+    nav_.seph = new seph_t[SBAS_EPHEMERIS_ARRAY_SIZE];
+    nav_.nsmax = nav_.ns = SBAS_EPHEMERIS_ARRAY_SIZE;
+    for (int i = 0; i < nav_.nsmax; i++)
+    {
+        memset(&nav_.seph[i], 0, sizeof(seph_t));
+    }
+
+    obs_.nmax = MAXOBS;
+    obs_.data = new obsd_t[MAXOBS];
+    memset(obs_.data, 0xFF, MAXOBS * sizeof(obsd_t));
+    for (int i = 0; i < MAXSAT; i++)
+    {
+        nav_.lam[i][0] = satwavelen(1, 0, &nav_);
+    }
+
+    startLog("sat.log");
+}
+
+SatelliteManager::~SatelliteManager()
+{
+    if (file_.is_open())
+        file_.close();
+    delete nav_.geph;
+    delete nav_.eph;
+    delete nav_.seph;
+    delete obs_.data;
+}
+
+void SatelliteManager::startLog(std::string file)
+{
+    if (!fs::is_directory("../logs") || !fs::exists("../logs"))
+    {
+        fs::create_directory("../logs");
+    }
+
+    file_.open("../logs/" + file);
 }
 
 
@@ -21,7 +77,7 @@ void SatelliteManager::addEphemeris(const eph_t& eph)
 	{
 		if (nav_.eph[idx].iode != eph.iode || timediff(eph.toe, nav_.eph[idx].toe) > 0.0)
 			nav_.eph[idx] = eph;
-	}
+    }
 }
 
 void SatelliteManager::addEphemeris(const geph_t& eph)
@@ -35,41 +91,103 @@ void SatelliteManager::addEphemeris(const geph_t& eph)
 		{
 			nav_.geph[idx] = eph;
 		}
-	}
+    }
 }
 
 void SatelliteManager::addObservation(const obsd_t& obs)
 {
   bool new_sat = true;
-  for (int i = 0; i < obs_.size(); i++)
+
+  if (start_.time == 0)
   {
-    if (obs_[i].sat == obs.sat && timediff(obs_[i].time, obs.time) < 0)
+      start_.time = obs.time.time;
+      start_.sec = obs.time.sec;
+  }
+
+  for (int i = 0; i < obs_vec_.size(); i++)
+  {
+    if (obs_vec_[i].sat == obs.sat && timediff(obs_vec_[i].time, obs.time) < 0)
     {
-      obs_[i] = obs;
+      obs_vec_[i] = obs;
       new_sat = false;
     }
   }
   if (new_sat)
   {
-    obs_.push_back(obs);
+    obs_vec_.push_back(obs);
   }
 }
 
 void SatelliteManager::update()
 {
-  gtime_t now;
-  int n = obs_.size();
-  rs_.resize(6*n);
-  dts_.resize(2*n);
-  var_.resize(n);
-  svh_.resize(MAXOBS * 2);
-  satposs(obs_[0].time, obs_.data(), obs_.size(), &nav_, EPHOPT_BRDC,
+  int n = obs_vec_.size();
+  rs_.resize(6, n);
+  dts_.resize(2, n);
+  var_.resize(1, n);
+  svh_.resize(1, n);
+  satposs(obs_vec_[0].time, obs_vec_.data(), obs_vec_.size(), &nav_, EPHOPT_BRDC,
       rs_.data(), dts_.data(), var_.data(), svh_.data());
 
+  if (file_.is_open())
+  {
+      int i;
+      int n = obs_vec_.size();
+      double N = 2 + 11 * n;
+      double t = timediff(obs_vec_[0].time, start_);
+      if (fabs(t - 9.80) < 0.100)
+          int debug = 1;
+      file_.write((char*)&N, sizeof(double));
+      file_.write((char*)&t, sizeof(double));
+      for (i = 0; i < n; i++)
+      {
+          double sat = obs_vec_[i].sat;
+          if (sat <= 0 || sat > 255)
+              int debug = 1;
+          file_.write((char*)&sat, sizeof(double));
+
+          if ((rs_.array() != rs_.array()).any())
+              int debug = 1;
+
+          file_.write((char*)(rs_.data()+6*i), sizeof(double)*6);
+          file_.write((char*)(dts_.data()+2*i), sizeof(double)*2);
+          file_.write((char*)(var_.data()+i), sizeof(double));
+
+          double svh = svh_(i);
+          file_.write((char*)(&svh), sizeof(double));
+      }
+      file_.flush();
+  }
 }
 
-void SatelliteManager::getSatState(int sat_id, const gtime_t& t, Vector3d& posECEF, Vector3d& velECEF)
+std::vector<uint8_t> SatelliteManager::satIds()
 {
+    std::vector<uint8_t> out;
+    for (int i = 0; i < obs_vec_.size(); i++)
+    {
+        out.push_back(obs_vec_[i].sat);
+    }
+    return out;
+}
 
+bool SatelliteManager::getSatState(int sat_id, gtime_t& t, Vector8d& state, double& var, int& health)
+{
+    int i;
+    for (i = 0; i < obs_vec_.size(); i++)
+    {
+        if (sat_id == obs_vec_[i].sat)
+            break;
+    }
+
+    if (i == obs_vec_.size())
+        return false;
+
+    if (rs_(0,i) == 0)
+        return false;
+
+    t = obs_vec_[i].time;
+    state.segment<6>(0) = rs_.col(i);
+    state.segment<2>(6) = dts_.col(i);
+    var = var_(i);
+    health = svh_(i);
 }
 

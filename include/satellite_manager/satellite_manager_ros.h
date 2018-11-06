@@ -7,6 +7,9 @@
 #include <inertial_sense/GNSSObservation.h>
 
 #include "satellite_manager/satellite_manager.h"
+#include "satellite_manager/SatellitePosition.h"
+#include "std_msgs/Float32.h"
+
 extern "C" {
 #include "rtklib.h"
 }
@@ -23,4 +26,8 @@ public:
 private:
     void update();
     SatelliteManager sat_manager_;
+
+    ros::NodeHandle nh_;
+    ros::Publisher sat_pub_;
+    gtime_t prev_time_;
 };

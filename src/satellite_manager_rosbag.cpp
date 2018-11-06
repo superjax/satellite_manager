@@ -207,5 +207,7 @@ int main(int argc, char * argv[])
         node.ephCallback(eph);
     }
   }
+  bag.close();
+  ros::shutdown();
 }
 

@@ -1,6 +1,8 @@
 cmake_minimum_required (VERSION 2.8.11)
 project (satellite_manager)
 
+set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} -std=c++11)
+
 find_package(GTest REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(catkin COMPONENTS
@@ -9,7 +11,10 @@ find_package(catkin COMPONENTS
     inertial_sense
     std_msgs
     geometry_msgs
+    message_generation
 )
+
+
 
 include_directories(include
     ${GTEST_INCLUDE_DIRS}
@@ -41,13 +46,28 @@ target_link_libraries(satellite_manager_test
 
 
 if (${catkin_FOUND})
+    add_message_files(
+        FILES
+        SatellitePosition.msg
+    )
+
+    generate_messages(
+        DEPENDENCIES 
+        std_msgs
+        inertial_sense
+        )
+
     include_directories(${catkin_INCLUDE_DIRS})
 
     add_library(satellite_manager_ros src/satellite_manager_ros.cpp)
     target_link_libraries(satellite_manager_ros
         ${catkin_LIBRARIES}
         satellite_manager
-        pthread)
+        pthread
+        stdc++fs)
+    add_dependencies(satellite_manager_ros inertial_sense_generate_messages_cpp)
+    add_dependencies(satellite_manager_ros satellite_manager_generate_messages_cpp)
+
 
     add_executable(satellite_manager_node src/satellite_manager_node.cpp)
     target_link_libraries(satellite_manager_node

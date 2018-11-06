@@ -1,7 +1,12 @@
 #include "satellite_manager/satellite_manager_ros.h"
 
 
-SatelliteManagerROS::SatelliteManagerROS(){}
+SatelliteManagerROS::SatelliteManagerROS()
+{
+    sat_pub_ = nh_.advertise<satellite_manager::SatellitePosition>("sat_pos", 25);
+    prev_time_.sec = 0;
+    prev_time_.time = 0;
+}
 
 void SatelliteManagerROS::ephCallback(const inertial_sense::GNSSEphemerisConstPtr &msg)
 {
@@ -47,7 +52,6 @@ void SatelliteManagerROS::ephCallback(const inertial_sense::GNSSEphemerisConstPt
     eph.Adot = msg->Adot;
     eph.ndot = msg->ndot;
     sat_manager_.addEphemeris(eph);
-    update();
 }
 
 void SatelliteManagerROS::gephCallback(const inertial_sense::GlonassEphemerisConstPtr &msg)
@@ -63,14 +67,13 @@ void SatelliteManagerROS::gephCallback(const inertial_sense::GlonassEphemerisCon
     geph.toe.sec = msg->toe.sec;
     geph.tof.time = msg->tof.time;
     geph.tof.sec = msg->tof.sec;
-    geph.pos[3] = msg->pos[3];
-    geph.vel[3] = msg->vel[3];
-    geph.acc[3] = msg->acc[3];
+    geph.pos[0] = msg->pos[0];
+    geph.vel[1] = msg->vel[1];
+    geph.acc[2] = msg->acc[2];
     geph.taun = msg->taun;
     geph.gamn = msg->gamn;
     geph.dtaun = msg->dtaun;
     sat_manager_.addEphemeris(geph);
-    update();
 }
 
 void SatelliteManagerROS::obsCallback(const inertial_sense::GNSSObservationConstPtr &msg)
@@ -92,14 +95,41 @@ void SatelliteManagerROS::obsCallback(const inertial_sense::GNSSObservationConst
     obsd.P[0] = msg->P;
     obsd.D[0] = msg->D;
     sat_manager_.addObservation(obsd);
-    update();
+    if (timediff(obsd.time, prev_time_) > 0.001)
+    {
+        prev_time_.sec = obsd.time.sec;
+        prev_time_.time = obsd.time.time;
+        update();
+    }
 }
 
 void SatelliteManagerROS::update()
 {
-    sat_manager_.update();
-
     // publish state of satellites
+    Vector8d state;
+    gtime_t time;
+    double var;
+    int svh;
+    sat_manager_.update();
+    std::vector<uint8_t> sat_ids = sat_manager_.satIds();
+    for (int i = 0; i < sat_ids.size(); i++)
+    {
+        if (sat_manager_.getSatState(sat_ids[i], time, state, var, svh))
+        {
+            satellite_manager::SatellitePosition sat_pos_msg;
+            sat_pos_msg.time.sec = time.sec;
+            sat_pos_msg.time.time = time.time;
+            sat_pos_msg.position.x = state(0);
+            sat_pos_msg.position.y = state(1);
+            sat_pos_msg.position.z = state(2);
+            sat_pos_msg.velocity.x = state(3);
+            sat_pos_msg.velocity.y = state(4);
+            sat_pos_msg.velocity.z = state(5);
+            sat_pos_msg.clock_bias = state(6);
+            sat_pos_msg.clock_drift = state(7);
+            sat_pub_.publish(sat_pos_msg);
+        }
+    }
 }
 
 
