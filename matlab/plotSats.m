@@ -113,3 +113,6 @@ for i = 1:nsat
 end
 legend(num2str(labels))
 
+%% Animation
+animateSats
+
