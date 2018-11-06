@@ -114,5 +114,5 @@ end
 legend(num2str(labels))
 
 %% Animation
-animateSats
+animateSats(pos, 10);
 

@@ -5,8 +5,8 @@
 
 int main(int argc, char** argv)
 {
-    volatile SatelliteManagerROS thing;
     ros::init(argc, argv, "satellite_manager_node");
+    volatile SatelliteManagerROS thing;
     ros::spin();
     return 0;
 }

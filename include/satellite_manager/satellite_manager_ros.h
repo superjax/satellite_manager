@@ -24,10 +24,13 @@ public:
     void obsCallback(const inertial_sense::GNSSObservationConstPtr &msg);
 
 private:
-    void update();
+    void update(gtime_t &t);
     SatelliteManager sat_manager_;
 
     ros::NodeHandle nh_;
     ros::Publisher sat_pub_;
+    ros::Subscriber obs_sub_;
+    ros::Subscriber eph_sub_;
+    ros::Subscriber geph_sub_;
     gtime_t prev_time_;
 };

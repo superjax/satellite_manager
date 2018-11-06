@@ -11,7 +11,7 @@ extern "C" {
 
 namespace fs = std::experimental::filesystem;
 
-#define GPS_EPHEMERIS_ARRAY_SIZE 33
+#define GPS_EPHEMERIS_ARRAY_SIZE NSATGPS
 #define GLONASS_EPHEMERIS_ARRAY_SIZE (NSATGLO)
 #define SBAS_EPHEMERIS_ARRAY_SIZE NSATSBS
 

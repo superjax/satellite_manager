@@ -1,5 +1,6 @@
 Header header
 inertial_sense/GTime time
+uint8 sat_id # satellite id
 geometry_msgs/Vector3 position # sat position ECEF (m)
 geometry_msgs/Vector3 velocity # sat velocity ECEF (m/s)
 float64 clock_bias # (s)

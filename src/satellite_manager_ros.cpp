@@ -6,6 +6,10 @@ SatelliteManagerROS::SatelliteManagerROS()
     sat_pub_ = nh_.advertise<satellite_manager::SatellitePosition>("sat_pos", 25);
     prev_time_.sec = 0;
     prev_time_.time = 0;
+
+    obs_sub_ = nh_.subscribe("gps/obs", 50, &SatelliteManagerROS::obsCallback, this);
+    eph_sub_ = nh_.subscribe("gps/eph", 50, &SatelliteManagerROS::ephCallback, this);
+    geph_sub_ = nh_.subscribe("gps/geph", 50, &SatelliteManagerROS::gephCallback, this);
 }
 
 void SatelliteManagerROS::ephCallback(const inertial_sense::GNSSEphemerisConstPtr &msg)
@@ -56,8 +60,8 @@ void SatelliteManagerROS::ephCallback(const inertial_sense::GNSSEphemerisConstPt
 
 void SatelliteManagerROS::gephCallback(const inertial_sense::GlonassEphemerisConstPtr &msg)
 {
-	geph_t geph;
-	geph.sat = msg->sat;
+    geph_t geph;
+    geph.sat = msg->sat;
     geph.iode = msg->iode;
     geph.frq = msg->frq;
     geph.svh = msg->svh;
@@ -99,26 +103,27 @@ void SatelliteManagerROS::obsCallback(const inertial_sense::GNSSObservationConst
     {
         prev_time_.sec = obsd.time.sec;
         prev_time_.time = obsd.time.time;
-        update();
+        update(obsd.time);
     }
 }
 
-void SatelliteManagerROS::update()
+void SatelliteManagerROS::update(gtime_t& t)
 {
     // publish state of satellites
     Vector8d state;
-    gtime_t time;
+
     double var;
     int svh;
-    sat_manager_.update();
+    sat_manager_.update(t);
     std::vector<uint8_t> sat_ids = sat_manager_.satIds();
     for (int i = 0; i < sat_ids.size(); i++)
     {
-        if (sat_manager_.getSatState(sat_ids[i], time, state, var, svh))
+        if (sat_manager_.getSatState(sat_ids[i], state, var, svh))
         {
             satellite_manager::SatellitePosition sat_pos_msg;
-            sat_pos_msg.time.sec = time.sec;
-            sat_pos_msg.time.time = time.time;
+            sat_pos_msg.sat_id = sat_ids[i];
+            sat_pos_msg.time.sec = prev_time_.sec;
+            sat_pos_msg.time.time = prev_time_.time;
             sat_pos_msg.position.x = state(0);
             sat_pos_msg.position.y = state(1);
             sat_pos_msg.position.z = state(2);

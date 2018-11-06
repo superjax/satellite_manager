@@ -101,8 +101,8 @@ int main(int argc, char * argv[])
     cout << "Please Specify bag file" << endl;
   }
 
-  ros::init(argc, argv, "vi_ekf_rosbag");
-  ros::NodeHandle nh;
+  ros::init(argc, argv, "satellite_manager_rosbag");
+  SatelliteManagerROS node;
 
   rosbag::Bag bag;
   try
@@ -139,9 +139,6 @@ int main(int argc, char * argv[])
   if (verbose)
     cout << "Playing bag from: = " << start_time << "s to: " << end_time << "s" << endl;
 
-  // Create the VIEKF_ROS object
-  SatelliteManagerROS node;
-
   // Get some time variables
   ros::Time system_start = ros::Time::now();
   ros::Time last_print = ros::Time(0);
@@ -151,6 +148,7 @@ int main(int argc, char * argv[])
 
   for (rosbag::View::iterator it = view.begin(); it != view.end(); it++)
   {
+    ros::spinOnce();
     rosbag::MessageInstance const m = *it;
     // break on Ctrl+C
     if (!ros::ok())
@@ -208,6 +206,5 @@ int main(int argc, char * argv[])
     }
   }
   bag.close();
-  ros::shutdown();
 }
 

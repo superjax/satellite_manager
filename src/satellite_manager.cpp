@@ -38,7 +38,6 @@ SatelliteManager::~SatelliteManager()
     delete nav_.geph;
     delete nav_.eph;
     delete nav_.seph;
-    delete obs_.data;
 }
 
 void SatelliteManager::startLog(std::string file)
@@ -169,7 +168,6 @@ bool SatelliteManager::getSatState(int sat_id, Vector8d& state, double& var, int
     if (rs_(0,i) == 0)
         return false;
 
-    t = obs_vec_[i].time;
     state.segment<6>(0) = rs_.col(i);
     state.segment<2>(6) = dts_.col(i);
     var = var_(i);
