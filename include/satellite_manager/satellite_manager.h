@@ -17,6 +17,7 @@ namespace fs = std::experimental::filesystem;
 
 using namespace Eigen;
 
+typedef Matrix<double, 6, 1> Vector6d;
 typedef Matrix<double, 8, 1> Vector8d;
 
 class SatelliteManager
@@ -30,6 +31,13 @@ public:
   void addEphemeris(const geph_t& eph);
   void addObservation(const obsd_t& obs);
   void startLog(std::string file);
+
+  /**
+   * @brief lsPositioning
+   * calculate position with least squares
+   * @param state [pos, vel]
+   */
+  void lsPositioning(Vector6d& state, Matrix3d &Qp, Matrix3d &Qv, gtime_t& time);
 
   /**
    * @brief satIds
@@ -63,7 +71,6 @@ public:
 
 private:
   void log();
-
   std::vector<obsd_t> obs_vec_; // vector of most recent observations for each satellite
   nav_t nav_; // navigation data (used for calculating position, created from ephemeris)
 
@@ -76,5 +83,7 @@ private:
   gtime_t current_time_; // current time that all states are calculated wrt.
 
   std::ofstream file_; // output file
+  prcopt_t opt_ = prcopt_default;
+  sol_t sol_ = {};
 };
 

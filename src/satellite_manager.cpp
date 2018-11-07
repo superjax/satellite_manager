@@ -53,80 +53,80 @@ void SatelliteManager::startLog(std::string file)
 
 void SatelliteManager::addEphemeris(const eph_t& eph)
 {
-	int idx = eph.sat;
-	if (idx > NSATGPS)
-	{
-		// in 0 based indexes, it is gps, then glonass, then everything else. Glonass ephemeris is handled elsewhere, so we need to
-		//  subtract the range of glonass indexes to get a 0 based non-Glonass epehmeris index.
-		idx -= NSATGLO;
-	}
-	// prn is 1 based, make it 0 based for array
-	idx--;
-	if (idx >= 0)
-	{
-		if (nav_.eph[idx].iode != eph.iode || timediff(eph.toe, nav_.eph[idx].toe) > 0.0)
-			nav_.eph[idx] = eph;
+    int idx = eph.sat;
+    if (idx > NSATGPS)
+    {
+        // in 0 based indexes, it is gps, then glonass, then everything else. Glonass ephemeris is handled elsewhere, so we need to
+        //  subtract the range of glonass indexes to get a 0 based non-Glonass epehmeris index.
+        idx -= NSATGLO;
+    }
+    // prn is 1 based, make it 0 based for array
+    idx--;
+    if (idx >= 0)
+    {
+        if (nav_.eph[idx].iode != eph.iode || timediff(eph.toe, nav_.eph[idx].toe) > 0.0)
+            nav_.eph[idx] = eph;
     }
 }
 
 void SatelliteManager::addEphemeris(const geph_t& eph)
 {
-	int prn;
-	satsys(eph.sat, &prn);
-	int idx = prn - 1;
-	if (idx >= 0)
-	{
-		if (nav_.geph[idx].iode != eph.iode)
-		{
-			nav_.geph[idx] = eph;
-		}
+    int prn;
+    satsys(eph.sat, &prn);
+    int idx = prn - 1;
+    if (idx >= 0)
+    {
+        if (nav_.geph[idx].iode != eph.iode)
+        {
+            nav_.geph[idx] = eph;
+        }
     }
 }
 
 void SatelliteManager::addObservation(const obsd_t& obs)
 {
-  bool new_sat = true;
+    bool new_sat = true;
 
-  if (start_.time == 0)
-  {
-      start_.time = obs.time.time;
-      start_.sec = obs.time.sec;
-  }
-
-  for (int i = 0; i < obs_vec_.size(); i++)
-  {
-    if (obs_vec_[i].sat == obs.sat && timediff(obs_vec_[i].time, obs.time) < 0)
+    if (start_.time == 0)
     {
-      obs_vec_[i] = obs;
-      new_sat = false;
+        start_.time = obs.time.time;
+        start_.sec = obs.time.sec;
     }
-  }
-  if (new_sat)
-  {
-    obs_vec_.push_back(obs);
-  }
+
+    for (int i = 0; i < obs_vec_.size(); i++)
+    {
+        if (obs_vec_[i].sat == obs.sat && timediff(obs_vec_[i].time, obs.time) < 0)
+        {
+            obs_vec_[i] = obs;
+            new_sat = false;
+        }
+    }
+    if (new_sat)
+    {
+        obs_vec_.push_back(obs);
+    }
 }
 
 void SatelliteManager::update(gtime_t t)
 {
-  int n = obs_vec_.size();
-  rs_.resize(6, n);
-  dts_.resize(2, n);
-  var_.resize(1, n);
-  svh_.resize(1, n);
-  satposs(t, obs_vec_.data(), obs_vec_.size(), &nav_, EPHOPT_BRDC,
-      rs_.data(), dts_.data(), var_.data(), svh_.data());
-  current_time_ = t;
+    int n = obs_vec_.size();
+    rs_.resize(6, n);
+    dts_.resize(2, n);
+    var_.resize(1, n);
+    svh_.resize(1, n);
+    satposs(t, obs_vec_.data(), obs_vec_.size(), &nav_, EPHOPT_BRDC,
+            rs_.data(), dts_.data(), var_.data(), svh_.data());
+    current_time_ = t;
 
-  // make a list of valid sats
-  current_sats_.clear();
-  for (int i = 0; i < obs_vec_.size(); i++)
-  {
-      if ((rs_.block<3,1>(0, i).array() != 0).any())
-          current_sats_.push_back(obs_vec_[i].sat);
-  }
+    // make a list of valid sats
+    current_sats_.clear();
+    for (int i = 0; i < obs_vec_.size(); i++)
+    {
+        if ((rs_.block<3,1>(0, i).array() != 0).any())
+            current_sats_.push_back(obs_vec_[i].sat);
+    }
 
-  log();
+    log();
 }
 
 void SatelliteManager::log()
@@ -172,5 +172,28 @@ bool SatelliteManager::getSatState(int sat_id, Vector8d& state, double& var, int
     state.segment<2>(6) = dts_.col(i);
     var = var_(i);
     health = svh_(i);
+}
+
+void SatelliteManager::lsPositioning(Vector6d &state, Matrix3d& Qp, Matrix3d& Qv, gtime_t& time)
+{
+    int i = 0;
+    const int n = obs_vec_.size();
+    MatrixXd azel;
+    azel.setZero(2, n);
+    int vsat[n];
+    double resp[n];
+    char msg[100];
+    int stat = estpos(obs_vec_.data(), obs_vec_.size(), rs_.data()+6*i,
+                      dts_.data(), var_.data(), svh_.data(), &nav_,
+                      &opt_, &sol_, azel.data(), vsat, resp, msg);
+    state(0) = sol_.rr[0];
+    state(1) = sol_.rr[1];
+    state(2) = sol_.rr[2];
+    state(3) = sol_.rr[3];
+    state(4) = sol_.rr[4];
+    state(5) = sol_.rr[5];
+
+    //qr is pos covariance
+    //qv is vel covariance
 }
 

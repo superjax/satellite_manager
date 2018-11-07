@@ -34,6 +34,9 @@ add_library(satellite_manager
     lib/RTKLIB/src/rtcm3.c
     lib/RTKLIB/src/rtcm3e.c
     lib/RTKLIB/src/sbas.c
+    lib/RTKLIB/src/pntpos.c
+    lib/RTKLIB/src/ionex.c
+    lib/RTKLIB/src/options.c
     )
 
 add_executable(satellite_manager_test test/test.cpp)
