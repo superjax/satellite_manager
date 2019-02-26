@@ -8,11 +8,15 @@
 
 #include "satellite_manager/satellite_manager.h"
 #include "satellite_manager/SatellitePosition.h"
+#include "satellite_manager/PositionVelocity.h"
 #include "std_msgs/Float32.h"
 
 extern "C" {
 #include "rtklib.h"
 }
+
+ros::Time gtime2ROS(const gtime_t& time);
+gtime_t ros2gtime(const ros::Time& time);
 
 class SatelliteManagerROS
 {
@@ -24,11 +28,13 @@ public:
     void obsCallback(const inertial_sense::GNSSObservationConstPtr &msg);
 
 private:
-    void update(gtime_t &t);
+    void updateWavelen();
+    void update(const ros::Time &t);
     SatelliteManager sat_manager_;
 
     ros::NodeHandle nh_;
     ros::Publisher sat_pub_;
+    ros::Publisher rec_pub_;
     ros::Subscriber obs_sub_;
     ros::Subscriber eph_sub_;
     ros::Subscriber geph_sub_;

@@ -4,7 +4,7 @@ set(0,'DefaultFigureWindowStyle','docked')
 file = fopen('../logs/sat.log', 'r');
 data = fread(file, 'double');
 
-
+rec_pos = [-1798904.13, -4532227.1 ,  4099781.95]';
 names = ["t", "N", "px", "py", "pz", "vx", "vy", "vz", "qw", "qx", "qy", "qz", "ax", "ay", "az", "bx", "by", "bz"];
 
 i = 1;
@@ -37,7 +37,7 @@ end
 %% Plot Position
 figure(1); clf;
 set(gcf, 'name', 'ECEF Position', 'NumberTitle', 'off');
-
+positions = [];
 labels = zeros(nsat,1);
 titles = ['x', 'y', 'z'];
 for i = 1:nsat
@@ -50,9 +50,10 @@ for i = 1:nsat
     end
     labels(i) = pos{i}(1,1);
     xlabel('s')
+    positions = [positions, pos{i}(3:5, 545)];
 end
 legend(num2str(labels))
-
+positions'
 
 %% Plot Velocity
 figure(2); clf;
@@ -114,5 +115,5 @@ end
 legend(num2str(labels))
 
 %% Animation
-animateSats(pos, 10);
+animateSats(rec_pos, pos, 10);
 

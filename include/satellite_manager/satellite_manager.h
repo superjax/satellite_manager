@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <experimental/filesystem>
 #include <fstream>
+#include <iostream>
+#include <map>
 
 #include "Eigen/Core"
 
@@ -16,8 +18,10 @@ namespace fs = std::experimental::filesystem;
 #define SBAS_EPHEMERIS_ARRAY_SIZE NSATSBS
 
 using namespace Eigen;
+using namespace std;
 
 typedef Matrix<double, 6, 1> Vector6d;
+typedef Matrix<double, 6, 6> Matrix6d;
 typedef Matrix<double, 8, 1> Vector8d;
 
 class SatelliteManager
@@ -31,13 +35,19 @@ public:
   void addEphemeris(const geph_t& eph);
   void addObservation(const obsd_t& obs);
   void startLog(std::string file);
+  double adjustPseudorange();
+
+  // Speed of light
+  static constexpr double C = 299792458.0; // m/s
+  // Earth's rotation rate
+  static constexpr double OMEGA_E = 7.2921151467e-5; //(rad/s);
 
   /**
    * @brief lsPositioning
    * calculate position with least squares
    * @param state [pos, vel]
    */
-  void lsPositioning(Vector6d& state, Matrix3d &Qp, Matrix3d &Qv, gtime_t& time);
+  bool recevierPos(Vector6d &state, Matrix3d& Qp, Matrix3d& Qv, gtime_t& time);
 
   /**
    * @brief satIds
@@ -68,16 +78,24 @@ public:
    */
   bool getSatState(int sat_id, Vector8d& state, double& var, int& health);
 
+  void calcSatPosition(const eph_t& eph, const gtime_t& time, Vector3d& pos, Vector3d& vel, bool compute_harmonic_correction);
+
 
 private:
   void log();
-  std::vector<obsd_t> obs_vec_; // vector of most recent observations for each satellite
+  void updateWavelen();
+  void updateGlonassFrequencies();
+  double calcPseudorange();
   nav_t nav_; // navigation data (used for calculating position, created from ephemeris)
 
+  // buffer for RTKLIB (column indices aligned with obs_vec)
+  std::vector<obsd_t> obs_vec_; // vector of most recent observations for each satellite
   Matrix<double, 6, -1> rs_; // position and velocity of each sat [pos, vel] (m, m/s) ECEF
   Matrix<double, 2, -1> dts_; // bias and clock drift of each sat [bias, clock drift] (s, s/s)
   Matrix<double, 1, -1> var_; // variance (m^2)
   Matrix<int, 1, -1> svh_; // satellite health flag
+
+  // valid satellites only
   std::vector<uint8_t> current_sats_; // list of currently tracked satellites with valid position and velocity
   gtime_t start_ = {}; // start time (used in logging)
   gtime_t current_time_; // current time that all states are calculated wrt.
@@ -85,5 +103,13 @@ private:
   std::ofstream file_; // output file
   prcopt_t opt_ = prcopt_default;
   sol_t sol_ = {};
+
+  // matrices for only valid satellite information
+  Matrix<double, 3, -1> xs_;
+  Matrix<double, -1, 1> rho_;
+  Matrix<double, 3, -1> e_; // unit vector to each satellite
+
+  Map<Vector6d> x_; // [pos, vel]
+  Matrix6d P_;
 };
 

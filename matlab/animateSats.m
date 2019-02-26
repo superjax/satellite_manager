@@ -1,4 +1,4 @@
-function animate(pos, speed)
+function animate(rec_pos, pos, speed)
 
 figure(5); clf;
 set(gcf, 'name', 'Animation', 'NumberTitle', 'off');
@@ -20,29 +20,31 @@ handles = [];
 time = pos{longest_idx}(2,:);
 for i = 1:speed:niter
     t = time(i);
-    handles = draw_sats(pos, t, handles);
+    handles = draw_sats(rec_pos, pos, t, handles);
     drawnow
 end
 end
 
 
 
-function handles = draw_sats(pos, t, handles)
+function handles = draw_sats(rec_pos, pos, t, handles)
 
 first_time = isempty(handles);
 for i = 1:length(pos)
     idx = find(pos{i}(2,:) == t);    
     if first_time
         if isempty(idx)
-            handles = [handles, scatter3(0, 0, 0)];
+            handles = [handles, plot3(0, 0, 0)];
         else
-            handles = [handles, scatter3(pos{i}(3, idx), pos{i}(4, idx), pos{i}(5, idx))];
+            handles = [handles, plot3(pos{i}(3, idx), pos{i}(4, idx), pos{i}(5, idx))];
         end
     else
         if isempty(idx)
             set(handles(i), 'XData', 0, 'YData', 0, 'ZData', 0);
         else
-            set(handles(i), 'XData', pos{i}(3, idx), 'YData', pos{i}(4, idx), 'ZData', pos{i}(5, idx));
+            set(handles(i), 'XData', [rec_pos(1), pos{i}(3, idx)],... 
+                            'YData', [rec_pos(2), pos{i}(4, idx)],...
+                            'ZData', [rec_pos(3), pos{i}(5, idx)]);
         end
         
     end

@@ -34,9 +34,15 @@ add_library(satellite_manager
     lib/RTKLIB/src/rtcm3.c
     lib/RTKLIB/src/rtcm3e.c
     lib/RTKLIB/src/sbas.c
-    lib/RTKLIB/src/pntpos.c
-    lib/RTKLIB/src/ionex.c
     lib/RTKLIB/src/options.c
+    lib/RTKLIB/src/rtkpos.c
+    lib/RTKLIB/src/lambda.c
+    lib/RTKLIB/src/ionex.c
+    lib/RTKLIB/src/pntpos.c
+    lib/RTKLIB/src/ppp.c
+    lib/RTKLIB/src/ppp_ar.c
+    lib/RTKLIB/src/tides.c
+    lib/RTKLIB/src/ppp_corr.c
     )
 
 add_executable(satellite_manager_test test/test.cpp)
@@ -52,6 +58,7 @@ if (${catkin_FOUND})
     add_message_files(
         FILES
         SatellitePosition.msg
+        PositionVelocity.msg
     )
 
     generate_messages(

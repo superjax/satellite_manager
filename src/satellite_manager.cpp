@@ -1,10 +1,15 @@
 #include "satellite_manager/satellite_manager.h"
 
+#include <Eigen/Dense>
+
 extern "C" {
 #include "rtklib.h"
 }
 
-SatelliteManager::SatelliteManager()
+
+
+SatelliteManager::SatelliteManager() :
+  x_(sol_.rr)
 {
     nav_.eph = new eph_t[GPS_EPHEMERIS_ARRAY_SIZE];
     nav_.nmax = nav_.n = GPS_EPHEMERIS_ARRAY_SIZE;
@@ -29,6 +34,12 @@ SatelliteManager::SatelliteManager()
     {
         memset(&nav_.seph[i], 0, sizeof(seph_t));
     }
+    P_.setZero();
+    x_.setZero();
+    sol_.rr[0] = -1798901.3;
+    sol_.rr[1] = -4532226.61;
+    sol_.rr[2] = 4099783.7;
+    updateWavelen();
 }
 
 SatelliteManager::~SatelliteManager()
@@ -65,7 +76,11 @@ void SatelliteManager::addEphemeris(const eph_t& eph)
     if (idx >= 0)
     {
         if (nav_.eph[idx].iode != eph.iode || timediff(eph.toe, nav_.eph[idx].toe) > 0.0)
+        {
             nav_.eph[idx] = eph;
+            updateWavelen();
+        }
+
     }
 }
 
@@ -79,6 +94,8 @@ void SatelliteManager::addEphemeris(const geph_t& eph)
         if (nav_.geph[idx].iode != eph.iode)
         {
             nav_.geph[idx] = eph;
+            updateWavelen();
+            updateGlonassFrequencies();
         }
     }
 }
@@ -107,6 +124,11 @@ void SatelliteManager::addObservation(const obsd_t& obs)
     }
 }
 
+void SatelliteManager::calcSatPosition(const eph_t &eph, const gtime_t &time, Vector3d &pos, Vector3d &vel, bool compute_harmonic_correction=false)
+{
+
+}
+
 void SatelliteManager::update(gtime_t t)
 {
     int n = obs_vec_.size();
@@ -116,16 +138,21 @@ void SatelliteManager::update(gtime_t t)
     svh_.resize(1, n);
     satposs(t, obs_vec_.data(), obs_vec_.size(), &nav_, EPHOPT_BRDC,
             rs_.data(), dts_.data(), var_.data(), svh_.data());
-    current_time_ = t;
 
     // make a list of valid sats
     current_sats_.clear();
     for (int i = 0; i < obs_vec_.size(); i++)
     {
         if ((rs_.block<3,1>(0, i).array() != 0).any())
-            current_sats_.push_back(obs_vec_[i].sat);
+            current_sats_.push_back(i);
     }
 
+    adjustPseudorange();
+    current_time_ = t;
+
+    Matrix3d Pp, Pv;
+    P_.block<3,3>(0,0) = Pp;
+    P_.block<3,3>(3,3) = Pv;
     log();
 }
 
@@ -153,7 +180,8 @@ void SatelliteManager::log()
     }
 }
 
-bool SatelliteManager::getSatState(int sat_id, Vector8d& state, double& var, int& health)
+bool SatelliteManager::getSatState(int sat_id, Vector8d& state, double& var,
+                                   int& health)
 {
     int i;
     for (i = 0; i < obs_vec_.size(); i++)
@@ -174,26 +202,108 @@ bool SatelliteManager::getSatState(int sat_id, Vector8d& state, double& var, int
     health = svh_(i);
 }
 
-void SatelliteManager::lsPositioning(Vector6d &state, Matrix3d& Qp, Matrix3d& Qv, gtime_t& time)
+bool SatelliteManager::recevierPos(Vector6d &state, Matrix3d& Qp, Matrix3d& Qv,
+                                   gtime_t& time)
 {
-    int i = 0;
-    const int n = obs_vec_.size();
-    MatrixXd azel;
-    azel.setZero(2, n);
-    int vsat[n];
-    double resp[n];
-    char msg[100];
-    int stat = estpos(obs_vec_.data(), obs_vec_.size(), rs_.data()+6*i,
-                      dts_.data(), var_.data(), svh_.data(), &nav_,
-                      &opt_, &sol_, azel.data(), vsat, resp, msg);
-    state(0) = sol_.rr[0];
-    state(1) = sol_.rr[1];
-    state(2) = sol_.rr[2];
-    state(3) = sol_.rr[3];
-    state(4) = sol_.rr[4];
-    state(5) = sol_.rr[5];
+  if (current_sats_.size() < 4)
+    return false;
 
-    //qr is pos covariance
-    //qv is vel covariance
+  MatrixXd A(current_sats_.size(), 4);
+  MatrixXd b(current_sats_.size(), 1);
+  MatrixXd est_psuedoranges(current_sats_.size(), 1);
+
+  A.rightCols(1).setConstant(1.0);
+
+  Map<const Vector3d> pos(sol_.rr);
+  Vector4d x;
+  x.segment<3>(0) = pos;
+  x(3,0) = CLIGHT*sol_.dtr[0];
+
+  Vector4d xprev;
+  xprev.setZero();
+  while ((x - xprev).norm() > 1e-3)
+  {
+    xprev = x;
+    adjustPseudorange();
+    A.leftCols(3) = -e_.transpose();
+    for (int i = 0; i < current_sats_.size(); i++)
+      est_psuedoranges(i,0) = (x.segment<3>(0) - xs_.col(i)).norm();
+    b = rho_ - est_psuedoranges;
+    x = A.colPivHouseholderQr().solve(b);
+
+  }
+  return true;
+}
+
+double SatelliteManager::adjustPseudorange()
+{
+  rho_.resize(current_sats_.size(), 1);
+  e_.resize(3, current_sats_.size());
+  xs_.resize(3, current_sats_.size());
+
+  Vector3d lla;
+  ecef2pos(x_.data(), lla.data());
+  for (int i = 0; i < current_sats_.size(); i++)
+  {
+    int obs_id = current_sats_[i];
+    Vector2d azel;
+    Vector2d zazel{0.0,90.0*D2R};
+    xs_.col(i) = rs_.block<3,1>(0, obs_id);
+
+    double rhat = geodist(xs_.data()+3*i, x_.data(), e_.data()+3*i);
+    if (rhat < 0.0)
+      continue;
+
+    double elevation = satazel(lla.data(), e_.data()+3*i, azel.data());
+    if (elevation < opt_.elmin)
+      continue;
+
+    rhat += -CLIGHT*dts_(0,i);
+
+    double zhd = tropmodel(obs_vec_[0].time, lla.data(), zazel.data(), 0.0);
+    double trop_comp = tropmapf(obs_vec_[obs_id].time, lla.data(), azel.data(), NULL) * zhd;
+    rhat += trop_comp;
+    rho_(i, 0) = rhat;
+  }
+}
+
+void SatelliteManager::updateWavelen()
+{
+	for (int i = 0; i < MAXSAT; i++)
+	{
+		nav_.lam[i][0] = satwavelen(i + 1, 0, &nav_);
+	}
+}
+
+void SatelliteManager::updateGlonassFrequencies()
+{
+	for (int i = 0; i < MAXPRNGLO; i++)
+	{
+		int sat = satno(SYS_GLO, i + 1);
+		int frq;
+
+		for (int j = 0, frq = -999; j < 3; j++)
+		{
+			if (nav_.geph[i].sat != sat)
+			{
+				continue;
+			}
+			frq = nav_.geph[i].frq;
+		}
+		if (frq < -7 || frq > 6)
+		{
+			continue;
+		}
+
+		for (int j = 0; j < 3; j++)
+		{
+			if (nav_.geph[i].sat == sat)
+			{
+				continue;
+			}
+			nav_.geph[i].sat = sat;
+			nav_.geph[i].frq = frq;
+		}
+	}
 }
 
